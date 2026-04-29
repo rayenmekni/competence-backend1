@@ -1,0 +1,25 @@
+# === Java / Maven ===
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+# === Angular / Node ===
+competence-frontend/node_modules/
+competence-frontend/dist/
+competence-frontend/distcompetence-frontend/
+competence-frontend/.angular/
+
+# === IDE ===
+.idea/
+.vscode/
+*.iws
+*.iml
+*.ipr
+
+# === OS ===
+.DS_Store
+Thumbs.db
+
+# === Logs ===
+*.log
