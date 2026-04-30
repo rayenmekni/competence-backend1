@@ -19,7 +19,7 @@ Ce module permet de gérer les **compétences (Skills)** des freelancers avec un
 ---
 
 ## 🏗️ Architecture
-test validation 
+test validation 1123
 ```
 templateEXAMEN/
 ├── src/                          # Backend Spring Boot
