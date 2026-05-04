@@ -35,7 +35,7 @@ pipeline {
         stage('Build') {
             steps {
                 echo "Compiling Java source code..."
-                sh 'mvn clean compile'
+                bat 'mvn clean compile'
             }
         }
         
@@ -43,23 +43,38 @@ pipeline {
             steps {
                 script {
                     echo "Starting MySQL 8.0 container..."
-                    sh """
-                        docker run -d \
-                            --name ${MYSQL_CONTAINER} \
-                            -e MYSQL_ROOT_PASSWORD=root \
-                            -e MYSQL_DATABASE=Competence \
-                            -p 3307:3306 \
+                    bat """
+                        docker run -d ^
+                            --name ${MYSQL_CONTAINER} ^
+                            -e MYSQL_ROOT_PASSWORD=root ^
+                            -e MYSQL_DATABASE=Competence ^
+                            -p 3307:3306 ^
                             mysql:8.0
                     """
                     
                     echo "Waiting for MySQL to be ready..."
-                    def ready = sh(
-                        script: "timeout 60 bash -c 'until docker exec ${MYSQL_CONTAINER} mysqladmin ping -h localhost --silent; do sleep 2; done'",
+                    // Wait for MySQL with Windows timeout
+                    def ready = bat(
+                        script: """
+                            @echo off
+                            set /a counter=0
+                            :loop
+                            docker exec ${MYSQL_CONTAINER} mysqladmin ping -h localhost --silent >nul 2>&1
+                            if %errorlevel% equ 0 goto success
+                            set /a counter+=1
+                            if %counter% geq 30 goto timeout
+                            timeout /t 2 /nobreak >nul
+                            goto loop
+                            :timeout
+                            exit /b 1
+                            :success
+                            exit /b 0
+                        """,
                         returnStatus: true
                     )
                     
                     if (ready != 0) {
-                        sh "docker logs ${MYSQL_CONTAINER}"
+                        bat "docker logs ${MYSQL_CONTAINER}"
                         error "MySQL container failed to start within 60 seconds. Check logs above."
                     }
                     echo "MySQL is ready for test execution"
@@ -70,7 +85,7 @@ pipeline {
         stage('Test') {
             steps {
                 echo "Running unit tests with MySQL integration..."
-                sh 'mvn test'
+                bat 'mvn test'
             }
             post {
                 always {
@@ -82,7 +97,7 @@ pipeline {
         stage('Coverage Report') {
             steps {
                 echo "Generating JaCoCo coverage reports..."
-                sh 'mvn jacoco:report'
+                bat 'mvn jacoco:report'
                 echo "Coverage reports generated in target/site/jacoco/"
             }
         }
@@ -99,7 +114,7 @@ pipeline {
         stage('Package') {
             steps {
                 echo "Packaging application as JAR..."
-                sh 'mvn package -DskipTests'
+                bat 'mvn package -DskipTests'
                 
                 // Stash JAR for Docker build stage
                 stash includes: 'target/*.jar', name: 'jar-artifact'
@@ -124,12 +139,12 @@ pipeline {
                     }
                     
                     // Verify JAR exists before Docker build
-                    sh "ls -lh target/*.jar"
+                    bat "dir target\\*.jar"
                     
                     // Build Docker image with multiple tags
-                    sh """
-                        docker build -t ${DOCKER_IMAGE}:latest \
-                                     -t ${DOCKER_IMAGE}:${env.GIT_COMMIT} \
+                    bat """
+                        docker build -t ${DOCKER_IMAGE}:latest ^
+                                     -t ${DOCKER_IMAGE}:${env.GIT_COMMIT} ^
                                      .
                     """
                     echo "Docker image built: ${DOCKER_IMAGE}:latest"
@@ -145,7 +160,7 @@ pipeline {
             steps {
                 script {
                     echo "Logging in to Docker Hub..."
-                    def loginStatus = sh(
+                    def loginStatus = bat(
                         script: "echo ${DOCKER_PASSWORD} | docker login -u ${DOCKER_USERNAME} --password-stdin",
                         returnStatus: true
                     )
@@ -155,7 +170,7 @@ pipeline {
                     }
                     
                     echo "Pushing Docker images to Docker Hub..."
-                    sh """
+                    bat """
                         docker push ${DOCKER_IMAGE}:latest
                         docker push ${DOCKER_IMAGE}:${env.GIT_COMMIT}
                     """
@@ -172,8 +187,8 @@ pipeline {
         always {
             script {
                 echo "Cleaning up MySQL container..."
-                sh "docker stop ${MYSQL_CONTAINER} || true"
-                sh "docker rm ${MYSQL_CONTAINER} || true"
+                bat "docker stop ${MYSQL_CONTAINER} || exit 0"
+                bat "docker rm ${MYSQL_CONTAINER} || exit 0"
             }
         }
         success {
