@@ -53,30 +53,30 @@ pipeline {
                     """
                     
                     echo "Waiting for MySQL to be ready..."
-                    // Wait for MySQL with Windows timeout
-                    def ready = bat(
-                        script: """
-                            @echo off
-                            set /a counter=0
-                            :loop
-                            docker exec ${MYSQL_CONTAINER} mysqladmin ping -h localhost --silent >nul 2>&1
-                            if %errorlevel% equ 0 goto success
-                            set /a counter+=1
-                            if %counter% geq 30 goto timeout
-                            timeout /t 2 /nobreak >nul
-                            goto loop
-                            :timeout
-                            exit /b 1
-                            :success
-                            exit /b 0
-                        """,
+                    // Simple sleep to allow MySQL to initialize
+                    sleep(time: 30, unit: 'SECONDS')
+                    
+                    // Verify MySQL is responding
+                    def pingResult = bat(
+                        script: "docker exec ${MYSQL_CONTAINER} mysqladmin ping -h localhost --silent",
                         returnStatus: true
                     )
                     
-                    if (ready != 0) {
-                        bat "docker logs ${MYSQL_CONTAINER}"
-                        error "MySQL container failed to start within 60 seconds. Check logs above."
+                    if (pingResult != 0) {
+                        echo "MySQL not ready after 30 seconds, waiting another 15 seconds..."
+                        sleep(time: 15, unit: 'SECONDS')
+                        
+                        pingResult = bat(
+                            script: "docker exec ${MYSQL_CONTAINER} mysqladmin ping -h localhost --silent",
+                            returnStatus: true
+                        )
+                        
+                        if (pingResult != 0) {
+                            bat "docker logs ${MYSQL_CONTAINER}"
+                            error "MySQL container failed to start within 45 seconds. Check logs above."
+                        }
                     }
+                    
                     echo "MySQL is ready for test execution"
                 }
             }
