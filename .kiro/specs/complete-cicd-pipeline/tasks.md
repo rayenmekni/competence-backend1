@@ -2,7 +2,7 @@
 
 ## Overview
 
-This implementation plan converts the CI/CD pipeline design into actionable coding tasks. The plan follows a sequential approach: first fixing the Maven configuration foundation, then enhancing the CI pipeline with quality tools, creating the CD pipeline, and finally adding documentation. Each task builds on previous work to ensure incremental validation and integration.
+This implementation plan converts the CI/CD pipeline design into actionable coding tasks. The plan follows a sequential approach: first fixing the Maven configuration foundation, then creating the Jenkins pipeline with CI and CD stages, and finally adding documentation. Each task builds on previous work to ensure incremental validation and integration.
 
 ## Tasks
 
@@ -13,7 +13,7 @@ This implementation plan converts the CI/CD pipeline design into actionable codi
     - Ensure valid XML structure with single `<build>` element
     - _Requirements: 7.1, 7.2, 7.3_
   
-  - [x] 1.2 Add SonarCloud properties to pom.xml
+  - [x] 1.2 Add SonarQube properties to pom.xml
     - Add `<properties>` section with sonar.projectKey, sonar.organization, sonar.host.url
     - Configure sonar.sources to point to src/main/java
     - Configure sonar.tests to point to src/test/java
@@ -34,125 +34,164 @@ This implementation plan converts the CI/CD pipeline design into actionable codi
     - This instructs Lombok to add @lombok.Generated annotations that JaCoCo excludes
     - _Requirements: 7.6, 2.2_
 
-- [x] 2. Enhance CI pipeline with code quality and coverage
-  - [x] 2.1 Add JaCoCo report generation step to ci.yml
-    - Add step after "Run tests" to generate JaCoCo reports
-    - Execute: `./mvnw jacoco:report`
-    - Add step name: "Generate JaCoCo coverage report"
-    - _Requirements: 2.3, 2.6, 2.7, 12.6_
+- [ ] 2. Create Jenkinsfile with CI stages
+  - [ ] 2.1 Create Jenkinsfile with pipeline structure
+    - Create new file named "Jenkinsfile" in project root
+    - Use declarative pipeline syntax
+    - Configure agent with label 'docker-maven-java21' or 'any'
+    - Configure tools block with Maven-3.9 and JDK-21
+    - Add environment block with credentials and configuration variables
+    - _Requirements: 15.1, 15.2, 15.3, 15.4, 15.5, 15.6_
   
-  - [x] 2.2 Add SonarCloud analysis step to ci.yml
-    - Add step after JaCoCo report generation
-    - Use SonarSource/sonarcloud-github-action@master
-    - Configure environment variable SONAR_TOKEN from GitHub secrets
-    - Add step name: "SonarCloud analysis"
-    - Log SonarCloud dashboard URL for visibility
-    - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 12.2_
+  - [ ] 2.2 Add Checkout and Build stages to Jenkinsfile
+    - Add Checkout stage with 'checkout scm' step
+    - Log Git branch and commit SHA for traceability
+    - Add Build stage with 'mvn clean compile' command
+    - Add echo statements for stage visibility
+    - _Requirements: 12.7, 12.1_
   
-  - [x] 2.3 Add Maven package step to ci.yml
-    - Add step after SonarCloud analysis
-    - Execute: `./mvnw package -DskipTests`
-    - Skip tests since they already ran in previous step
-    - Add step name: "Build JAR artifact"
-    - _Requirements: 3.1, 3.3, 3.4_
+  - [ ] 2.3 Add MySQL container stage to Jenkinsfile
+    - Add "Start MySQL" stage before Test stage
+    - Use docker run command to start MySQL 8.0 container
+    - Configure container name using BUILD_ID for uniqueness
+    - Set environment variables: MYSQL_ROOT_PASSWORD=root, MYSQL_DATABASE=Competence
+    - Map port 3307:3306 for host access
+    - Add health check with timeout using mysqladmin ping
+    - Add error handling for MySQL startup failures
+    - _Requirements: 13.1, 13.2, 13.3, 13.4, 13.5, 13.6, 13.7_
   
-  - [x] 2.4 Add artifact upload step to ci.yml
-    - Add step after Maven package
-    - Use actions/upload-artifact@v4
-    - Upload target/*.jar with artifact name "application-jar"
-    - Set retention-days to 90
-    - Add step name: "Upload JAR artifact"
-    - _Requirements: 3.2, 3.5, 12.1_
+  - [ ] 2.4 Add Test and Coverage stages to Jenkinsfile
+    - Add Test stage with 'mvn test' command
+    - Add post-always block to publish JUnit test results
+    - Add Coverage Report stage with 'mvn jacoco:report' command
+    - Log coverage report location
+    - _Requirements: 2.1, 2.2, 2.3, 2.6, 2.7, 12.6_
+  
+  - [ ] 2.5 Add SonarQube Analysis stage to Jenkinsfile
+    - Add SonarQube Analysis stage with withSonarQubeEnv wrapper
+    - Execute 'mvn sonar:sonar' with project key and token
+    - Add error handling for authentication failures
+    - Log SonarQube dashboard URL
+    - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 12.2_
+  
+  - [ ] 2.6 Add Quality Gate stage to Jenkinsfile
+    - Add Quality Gate stage with waitForQualityGate function
+    - Set timeout to 5 minutes
+    - Log quality gate status and conditions
+    - Continue pipeline even if quality gate fails (for demonstration)
+    - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5, 10.6_
+  
+  - [ ] 2.7 Add Package stage to Jenkinsfile
+    - Add Package stage with 'mvn package -DskipTests' command
+    - Use stash to preserve JAR artifact for Docker build
+    - Stash target/*.jar with name 'jar-artifact'
+    - Log stash operation success
+    - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
 
-- [ ] 3. Checkpoint - Verify CI pipeline enhancements
-  - Run the enhanced CI pipeline locally or push to trigger GitHub Actions
-  - Verify JaCoCo reports are generated in target/site/jacoco/
-  - Verify JAR artifact is created in target/
+- [ ] 3. Checkpoint - Verify CI stages in Jenkinsfile
+  - Review Jenkinsfile for correct syntax and structure
+  - Verify all CI stages are defined: Checkout, Build, Start MySQL, Test, Coverage, Analysis, Quality Gate, Package
+  - Verify environment variables for MySQL connection
   - Ensure all tests pass, ask the user if questions arise
 
-- [x] 4. Create CD pipeline for Docker deployment
-  - [x] 4.1 Create .github/workflows/cd.yml file
-    - Create new file with workflow name "CD Backend"
-    - Configure workflow_run trigger for "CI Backend" workflow
-    - Set trigger types to [completed]
-    - Configure to run only on main branch
-    - Add conditional check: `if: github.event.workflow_run.conclusion == 'success'`
-    - _Requirements: 4.1, 6.1, 6.2, 6.3, 6.4, 11.1, 11.2, 11.3_
-  
-  - [x] 4.2 Add checkout and artifact download steps to cd.yml
-    - Add checkout step using actions/checkout@v4
-    - Add artifact download step using actions/download-artifact@v4
-    - Download artifact named "application-jar" to target/ directory
+- [ ] 4. Add CD stages to Jenkinsfile
+  - [ ] 4.1 Add Docker Build stage to Jenkinsfile
+    - Add Docker Build stage with conditional execution: when { branch 'main' }
+    - Use unstash to retrieve JAR artifact from Package stage
     - Add error handling for missing artifact
-    - Add step names: "Checkout code" and "Download JAR artifact"
-    - _Requirements: 4.2, 4.6, 11.5, 12.7_
+    - Execute docker build command with multiple tags: latest and commit SHA
+    - Use ${DOCKER_IMAGE}:latest and ${DOCKER_IMAGE}:${env.GIT_COMMIT}
+    - Log Docker image names and tags
+    - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 12.3_
   
-  - [x] 4.3 Add Docker Hub login step to cd.yml
-    - Add Docker login step using docker/login-action@v3
-    - Configure username from secrets.DOCKER_USERNAME
-    - Configure password from secrets.DOCKER_PASSWORD
-    - Add step name: "Login to Docker Hub"
-    - _Requirements: 5.1, 5.4, 8.2, 8.3, 8.6_
+  - [ ] 4.2 Add Docker Push stage to Jenkinsfile
+    - Add Docker Push stage with conditional execution: when { branch 'main' }
+    - Add Docker Hub login using credentials
+    - Use echo and docker login with --password-stdin
+    - Add error handling for authentication failures
+    - Execute docker push for both latest and commit SHA tags
+    - Log Docker Hub repository URL and pushed tags
+    - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 12.4, 12.5_
   
-  - [x] 4.4 Add Docker build and push steps to cd.yml
-    - Add Docker build step using docker/build-push-action@v5
-    - Configure context to current directory
-    - Configure file to ./Dockerfile
-    - Enable push: true
-    - Configure tags: both latest and commit SHA (${{ github.sha }})
-    - Add step name: "Build and push Docker image"
-    - Log image name and tags after successful push
-    - _Requirements: 4.3, 4.4, 4.5, 5.2, 5.3, 5.5, 12.3, 12.4_
+  - [ ] 4.3 Add post-build actions to Jenkinsfile
+    - Add post block with always, success, and failure sections
+    - In always block: stop and remove MySQL container
+    - Use 'docker stop' and 'docker rm' with '|| true' for error tolerance
+    - In success block: log pipeline completion message
+    - In failure block: log pipeline failure message
+    - _Requirements: 6.5, 12.1, 12.5_
 
-- [ ] 5. Checkpoint - Verify CD pipeline creation
-  - Review cd.yml for correct syntax and structure
-  - Verify workflow_run trigger configuration
-  - Verify Docker build configuration references correct Dockerfile
+- [ ] 5. Checkpoint - Verify complete Jenkinsfile
+  - Review Jenkinsfile for all stages: CI and CD
+  - Verify conditional execution for CD stages (main branch only)
+  - Verify stash/unstash for artifact management
+  - Verify post-build cleanup actions
   - Ensure all tests pass, ask the user if questions arise
 
-- [x] 6. Create documentation for secrets and setup
-  - [x] 6.1 Create CICD_SETUP.md documentation file
-    - Create new file in project root
-    - Add title: "CI/CD Pipeline Setup Guide"
-    - Add overview section explaining the complete pipeline flow
+- [ ] 6. Delete GitHub Actions workflow files
+  - [ ] 6.1 Delete .github/workflows/ci.yml file
+    - Remove the GitHub Actions CI workflow file
+    - This is replaced by Jenkins pipeline CI stages
+    - _Requirements: 15.1_
+  
+  - [ ] 6.2 Delete .github/workflows/cd.yml file
+    - Remove the GitHub Actions CD workflow file
+    - This is replaced by Jenkins pipeline CD stages
+    - _Requirements: 15.1_
+
+- [ ] 7. Update documentation for Jenkins setup
+  - [ ] 7.1 Update CICD_SETUP.md for Jenkins
+    - Update title to reflect Jenkins pipeline
+    - Replace GitHub Actions references with Jenkins references
+    - Update overview section to explain Jenkins pipeline flow
     - _Requirements: 14.5, 15.5_
   
-  - [x] 6.2 Add SonarCloud setup instructions to CICD_SETUP.md
-    - Document how to create SonarCloud account at sonarcloud.io
-    - Document how to create new project and link to GitHub repository
-    - Document how to generate SONAR_TOKEN from SonarCloud account settings
-    - Document how to add SONAR_TOKEN to GitHub repository secrets
-    - Include project key and organization configuration
+  - [ ] 7.2 Add Jenkins configuration instructions to CICD_SETUP.md
+    - Document Jenkins Global Tool Configuration for Maven and JDK
+    - Document Jenkins agent requirements (Docker, Maven, Java 21)
+    - Document SonarQube server configuration in Jenkins
+    - Document Jenkins credentials setup for sonar-token and docker-credentials
+    - Include step-by-step instructions with Jenkins UI paths
+    - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 8.7_
+  
+  - [ ] 7.3 Update SonarQube setup instructions in CICD_SETUP.md
+    - Keep SonarQube account creation instructions
+    - Update credential configuration to use Jenkins Credentials store
+    - Document how to add SONAR_TOKEN as Secret text in Jenkins
+    - Document SonarQube webhook configuration to Jenkins
     - _Requirements: 14.1, 14.2, 8.1, 8.5_
   
-  - [x] 6.3 Add Docker Hub setup instructions to CICD_SETUP.md
-    - Document how to create Docker Hub account at hub.docker.com
-    - Document how to generate access token from Docker Hub account settings
-    - Document how to add DOCKER_USERNAME to GitHub repository secrets
-    - Document how to add DOCKER_PASSWORD (access token) to GitHub repository secrets
+  - [ ] 7.4 Update Docker Hub setup instructions in CICD_SETUP.md
+    - Keep Docker Hub account creation instructions
+    - Update credential configuration to use Jenkins Credentials store
+    - Document how to add docker-credentials as Username with password in Jenkins
+    - Explain _USR and _PSW suffix usage in Jenkins
     - _Requirements: 14.3, 14.4, 8.2, 8.3, 8.6_
   
-  - [x] 6.4 Add troubleshooting section to CICD_SETUP.md
-    - Document common failure scenarios and solutions
-    - Include authentication error troubleshooting for SonarCloud
-    - Include authentication error troubleshooting for Docker Hub
-    - Include missing artifact troubleshooting for CD pipeline
-    - Include MySQL connection troubleshooting for CI tests
-    - Document how to view SonarCloud reports and JaCoCo coverage reports
+  - [ ] 7.5 Update troubleshooting section in CICD_SETUP.md
+    - Update troubleshooting for Jenkins-specific issues
+    - Add Jenkins agent connectivity troubleshooting
+    - Add Docker daemon access troubleshooting
+    - Update authentication error troubleshooting for Jenkins credentials
+    - Add stash/unstash artifact troubleshooting
+    - Update MySQL container troubleshooting for Jenkins environment
+    - Document how to view Jenkins console output and Blue Ocean UI
     - _Requirements: 14.6, 14.7, 1.6, 5.4, 4.6, 13.7_
   
-  - [x] 6.5 Add workflow execution guide to CICD_SETUP.md
-    - Document the complete workflow from code push to Docker Hub publication
-    - Explain CI pipeline steps: checkout, test, coverage, analysis, package, upload
-    - Explain CD pipeline steps: trigger, download, build, push
-    - Document how to view workflow runs in GitHub Actions UI
-    - Document how to access SonarCloud dashboard and coverage reports
+  - [ ] 7.6 Update pipeline execution guide in CICD_SETUP.md
+    - Document complete Jenkins pipeline flow from code push to Docker Hub
+    - Explain CI stages: Checkout, Build, Start MySQL, Test, Coverage, Analysis, Quality Gate, Package
+    - Explain CD stages: Docker Build, Docker Push (conditional on main branch)
+    - Document how to view pipeline runs in Jenkins UI and Blue Ocean
+    - Document how to manually trigger pipeline from Jenkins
+    - Document how to access SonarQube dashboard and JaCoCo coverage reports
     - _Requirements: 14.5, 12.1, 12.2, 12.3, 12.4, 12.5, 12.6, 12.7_
 
-- [ ] 7. Final checkpoint - Complete pipeline validation
-  - Review all modified files: pom.xml, ci.yml, cd.yml, lombok.config, CICD_SETUP.md
+- [ ] 8. Final checkpoint - Complete pipeline validation
+  - Review all modified files: pom.xml, Jenkinsfile, lombok.config, CICD_SETUP.md
   - Verify XML structure is valid in pom.xml
-  - Verify YAML syntax is valid in workflow files
+  - Verify Groovy syntax is valid in Jenkinsfile
+  - Verify .github/workflows directory is deleted or empty
   - Verify all requirements are addressed in implementation
   - Ensure all tests pass, ask the user if questions arise
 
@@ -162,6 +201,9 @@ This implementation plan converts the CI/CD pipeline design into actionable codi
 - Each task references specific requirements for traceability
 - Checkpoints ensure incremental validation
 - This is a DevOps/Infrastructure feature - no property-based tests are applicable
-- The implementation focuses on configuration files (XML, YAML) and documentation
-- Secrets (SONAR_TOKEN, DOCKER_USERNAME, DOCKER_PASSWORD) must be configured manually in GitHub repository settings
-- The CD pipeline will only trigger after successful CI completion on the main branch
+- The implementation focuses on configuration files (XML, Groovy) and documentation
+- Jenkins credentials (sonar-token, docker-credentials) must be configured manually in Jenkins UI
+- Jenkins Global Tool Configuration must include Maven-3.9 and JDK-21
+- Jenkins agents must have Docker daemon access for MySQL container and Docker image operations
+- The CD stages execute only on the main branch using conditional when directives
+- Single Jenkinsfile replaces separate GitHub Actions workflow files
