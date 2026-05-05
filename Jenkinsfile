@@ -14,7 +14,7 @@ pipeline {
         DOCKER_IMAGE = "rayenmekni123/competence-backend1"
         
         // SonarQube configuration
-        SONAR_HOST_URL = 'http://sonarqube-service:9000'
+        SONAR_HOST_URL = 'http://localhost:9000'
         SONAR_TOKEN = credentials('sonar-token')
         
         // MySQL configuration for tests
