@@ -7,17 +7,18 @@ pipeline {
     }
     
     environment {
-        // Credentials from Jenkins Credentials store
-        SONAR_TOKEN = credentials('sonar-token')
+        // Docker Hub credentials
         DOCKER_CREDS = credentials('docker-credentials')
         DOCKER_USERNAME = "${DOCKER_CREDS_USR}"
         DOCKER_PASSWORD = "${DOCKER_CREDS_PSW}"
+        DOCKER_IMAGE = "rayenmekni123/competence-backend1"
         
-        // Configuration variables
-        DOCKER_IMAGE = "${DOCKER_USERNAME}/competence-backend1"
+        // SonarQube configuration
+        SONAR_HOST_URL = 'http://sonarqube-service:9000'
+        SONAR_TOKEN = credentials('sonar-token')
+        
+        // MySQL configuration for tests
         MYSQL_CONTAINER = "mysql-test-${BUILD_ID}"
-        
-        // Database connection for tests
         SPRING_DATASOURCE_URL = 'jdbc:mysql://localhost:3307/Competence'
         SPRING_DATASOURCE_USERNAME = 'root'
         SPRING_DATASOURCE_PASSWORD = 'root'
@@ -35,7 +36,7 @@ pipeline {
         stage('Build') {
             steps {
                 echo "Compiling Java source code..."
-                bat 'mvn clean compile'
+                bat 'mvn clean compile -q'
             }
         }
         
@@ -53,10 +54,8 @@ pipeline {
                     """
                     
                     echo "Waiting for MySQL to be ready..."
-                    // Simple sleep to allow MySQL to initialize
                     sleep(time: 30, unit: 'SECONDS')
                     
-                    // Verify MySQL is responding
                     def pingResult = bat(
                         script: "docker exec ${MYSQL_CONTAINER} mysqladmin ping -h localhost --silent",
                         returnStatus: true
@@ -82,7 +81,7 @@ pipeline {
             }
         }
         
-        stage('Test') {
+        stage('Tests Unitaires') {
             steps {
                 echo "Running unit tests with MySQL integration..."
                 bat 'mvn test'
@@ -94,7 +93,7 @@ pipeline {
             }
         }
         
-        stage('Coverage Report') {
+        stage('JaCoCo Coverage') {
             steps {
                 echo "Generating JaCoCo coverage reports..."
                 bat 'mvn jacoco:report'
@@ -105,43 +104,40 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 script {
-                    echo "⚠️ SonarQube analysis skipped - plugin not configured"
-                    echo "To enable: Install SonarQube Scanner plugin and configure server"
+                    echo "Running SonarQube analysis..."
+                    withSonarQubeEnv('SonarQube') {
+                        bat """
+                            mvn sonar:sonar ^
+                                -Dsonar.projectKey=competence-backend1 ^
+                                -Dsonar.host.url=%SONAR_HOST_URL% ^
+                                -Dsonar.login=%SONAR_TOKEN% ^
+                                -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
+                        """
+                    }
                 }
             }
         }
         
-        stage('Package') {
+        stage('Package JAR') {
             steps {
                 echo "Packaging application as JAR..."
                 bat 'mvn package -DskipTests'
                 
-                // Stash JAR for Docker build stage
                 stash includes: 'target/*.jar', name: 'jar-artifact'
                 echo "JAR artifact stashed for Docker build"
             }
         }
         
         stage('Docker Build') {
-            when {
-                branch 'main'
-            }
             steps {
                 script {
                     echo "Building Docker image..."
                     
-                    // Unstash JAR artifact from Package stage
-                    try {
-                        unstash 'jar-artifact'
-                        echo "JAR artifact unstashed successfully"
-                    } catch (Exception e) {
-                        error "JAR artifact not found. Package stage may have failed or artifact was not stashed. Check Package stage logs."
-                    }
+                    unstash 'jar-artifact'
+                    echo "JAR artifact unstashed successfully"
                     
-                    // Verify JAR exists before Docker build
                     bat "dir target\\*.jar"
                     
-                    // Build Docker image with multiple tags
                     bat """
                         docker build -t ${DOCKER_IMAGE}:latest ^
                                      -t ${DOCKER_IMAGE}:${env.GIT_COMMIT} ^
@@ -154,9 +150,6 @@ pipeline {
         }
         
         stage('Docker Push') {
-            when {
-                branch 'main'
-            }
             steps {
                 script {
                     echo "Logging in to Docker Hub..."
@@ -166,7 +159,7 @@ pipeline {
                     )
                     
                     if (loginStatus != 0) {
-                        error "Docker Hub authentication failed. Verify docker-credentials in Jenkins (username: ${DOCKER_USERNAME}). Ensure Docker Hub access token is valid."
+                        error "Docker Hub authentication failed. Verify docker-credentials in Jenkins."
                     }
                     
                     echo "Pushing Docker images to Docker Hub..."
@@ -177,7 +170,21 @@ pipeline {
                     
                     echo "Docker image pushed: ${DOCKER_IMAGE}:latest"
                     echo "Docker image pushed: ${DOCKER_IMAGE}:${env.GIT_COMMIT}"
-                    echo "Docker Hub: https://hub.docker.com/r/${DOCKER_USERNAME}/competence-backend1"
+                    echo "Docker Hub: https://hub.docker.com/r/rayenmekni123/competence-backend1"
+                }
+            }
+        }
+        
+        stage('Trigger CD Pipeline') {
+            steps {
+                script {
+                    echo "Triggering CD pipeline with IMAGE_TAG=${env.GIT_COMMIT}"
+                    build job: 'competence-backend1-CD', 
+                          parameters: [
+                              string(name: 'IMAGE_TAG', value: "${env.GIT_COMMIT}"),
+                              string(name: 'DOCKER_IMAGE', value: "${DOCKER_IMAGE}")
+                          ], 
+                          wait: false
                 }
             }
         }
@@ -192,10 +199,10 @@ pipeline {
             }
         }
         success {
-            echo "✅ Pipeline completed successfully!"
+            echo "✅ CI Pipeline completed successfully!"
         }
         failure {
-            echo "❌ Pipeline failed. Check logs for details."
+            echo "❌ CI Pipeline failed. Check logs for details."
         }
     }
 }
