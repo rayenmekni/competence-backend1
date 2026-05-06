@@ -17,7 +17,7 @@ pipeline {
                 script {
                     echo "Checking Minikube status..."
                     def minikubeStatus = bat(
-                        script: 'minikube status',
+                        script: '"C:Program FilesKubernetesMinikubeminikube.exe" status',
                         returnStatus: true
                     )
                     
