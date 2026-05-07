@@ -1,36 +1,27 @@
 pipeline {
     agent any
-    
+
     parameters {
         string(name: 'IMAGE_TAG', defaultValue: 'latest', description: 'Docker image tag to deploy')
         string(name: 'DOCKER_IMAGE', defaultValue: 'rayenmekni123/competence-backend1', description: 'Docker image name')
     }
-    
+
     environment {
         NAMESPACE = 'competence'
         K8S_DIR = 'k8s'
     }
-    
+
     stages {
-        stage('Check Minikube Status') {
+        stage('Check Kubernetes Status') {
             steps {
                 script {
-                    echo "Checking Minikube status..."
-                    def minikubeStatus = bat(
-                        script: '"C:Program FilesKubernetesMinikubeminikube.exe" status',
-                        returnStatus: true
-                    )
-                    
-                    if (minikubeStatus != 0) {
-                        error "Minikube is not running. Please start Minikube first: minikube start"
-                    }
-                    
-                    echo "✅ Minikube is running"
+                    echo "Checking Kubernetes (Docker Desktop) status..."
                     bat 'kubectl cluster-info'
+                    echo "Kubernetes is running"
                 }
             }
         }
-        
+
         stage('Prepare Namespace') {
             steps {
                 script {
@@ -38,149 +29,249 @@ pipeline {
                     bat """
                         kubectl create namespace ${NAMESPACE} || echo "Namespace ${NAMESPACE} already exists"
                     """
-                    
-                    echo "Setting current context to namespace: ${NAMESPACE}"
                     bat "kubectl config set-context --current --namespace=${NAMESPACE}"
                 }
             }
         }
-        
+
         stage('Deploy MySQL') {
             steps {
                 script {
                     echo "Deploying MySQL to Kubernetes..."
                     bat "kubectl apply -f ${K8S_DIR}/mysql-deployment.yaml -n ${NAMESPACE}"
-                    
-                    echo "Waiting for MySQL to be ready..."
                     bat """
                         kubectl wait --for=condition=ready pod ^
                             -l app=mysql ^
                             -n ${NAMESPACE} ^
                             --timeout=120s
                     """
-                    
-                    echo "✅ MySQL deployed successfully"
+                    echo "MySQL deployed successfully"
                 }
             }
         }
-        
+
         stage('Deploy Backend') {
             steps {
                 script {
                     echo "Deploying Backend application..."
                     echo "Using Docker image: ${params.DOCKER_IMAGE}:${params.IMAGE_TAG}"
-                    
-                    // Update image tag in deployment
                     bat """
-                        kubectl set image deployment/backend-deployment ^
-                            backend=${params.DOCKER_IMAGE}:${params.IMAGE_TAG} ^
+                        kubectl set image deployment/competence-backend ^
+                            competence-backend=${params.DOCKER_IMAGE}:${params.IMAGE_TAG} ^
                             -n ${NAMESPACE} ^
                             || kubectl apply -f ${K8S_DIR}/backend-deployment.yaml -n ${NAMESPACE}
                     """
-                    
-                    echo "Waiting for Backend to be ready..."
                     bat """
                         kubectl wait --for=condition=ready pod ^
-                            -l app=backend ^
+                            -l app=competence-backend ^
                             -n ${NAMESPACE} ^
                             --timeout=180s
                     """
-                    
-                    echo "✅ Backend deployed successfully"
+                    echo "Backend deployed successfully"
                 }
             }
         }
-        
+
         stage('Deploy SonarQube') {
             steps {
                 script {
                     echo "Deploying SonarQube to Kubernetes..."
                     bat "kubectl apply -f ${K8S_DIR}/sonarqube-deployment.yaml -n ${NAMESPACE}"
-                    
-                    echo "Waiting for SonarQube to be ready (this may take a few minutes)..."
                     bat """
                         kubectl wait --for=condition=ready pod ^
                             -l app=sonarqube ^
                             -n ${NAMESPACE} ^
                             --timeout=300s
                     """
-                    
-                    echo "✅ SonarQube deployed successfully"
                     echo "SonarQube URL: http://localhost:30900"
                 }
             }
         }
-        
+
         stage('Deploy Monitoring') {
             steps {
                 script {
                     echo "Deploying Prometheus..."
                     bat "kubectl apply -f ${K8S_DIR}/prometheus-deployment.yaml -n ${NAMESPACE}"
-                    
                     echo "Deploying Grafana..."
                     bat "kubectl apply -f ${K8S_DIR}/grafana-deployment.yaml -n ${NAMESPACE}"
-                    
-                    echo "Waiting for Prometheus to be ready..."
                     bat """
                         kubectl wait --for=condition=ready pod ^
                             -l app=prometheus ^
                             -n ${NAMESPACE} ^
                             --timeout=120s
                     """
-                    
-                    echo "Waiting for Grafana to be ready..."
                     bat """
                         kubectl wait --for=condition=ready pod ^
                             -l app=grafana ^
                             -n ${NAMESPACE} ^
                             --timeout=120s
                     """
-                    
-                    echo "✅ Monitoring stack deployed successfully"
                     echo "Prometheus URL: http://localhost:30909"
                     echo "Grafana URL: http://localhost:30300"
                 }
             }
         }
-        
+
         stage('Verify Deployments') {
             steps {
                 script {
                     echo "Verifying all deployments..."
-                    
                     bat "kubectl get all -n ${NAMESPACE}"
-                    
-                    echo "\n=== Service Endpoints ==="
-                    echo "Backend API: http://localhost:30089"
-                    echo "SonarQube: http://localhost:30900"
-                    echo "Prometheus: http://localhost:30909"
-                    echo "Grafana: http://localhost:30300 (admin/admin)"
-                    
-                    echo "\n=== Deployment Status ==="
-                    bat "kubectl get deployments -n ${NAMESPACE}"
-                    
-                    echo "\n=== Pod Status ==="
                     bat "kubectl get pods -n ${NAMESPACE}"
                 }
             }
         }
     }
-    
+
     post {
         success {
-            echo "✅ CD Pipeline completed successfully!"
-            echo "\n=== Access Your Services ==="
+            echo "CD Pipeline completed successfully!"
             echo "Backend API: http://localhost:30089"
             echo "SonarQube: http://localhost:30900"
             echo "Prometheus: http://localhost:30909"
             echo "Grafana: http://localhost:30300"
         }
         failure {
-            echo "❌ CD Pipeline failed. Check logs for details."
-            echo "\nTroubleshooting commands:"
-            echo "kubectl get pods -n ${NAMESPACE}"
-            echo "kubectl describe pod <pod-name> -n ${NAMESPACE}"
-            echo "kubectl logs <pod-name> -n ${NAMESPACE}"
+            echo "CD Pipeline failed. Check logs for details."
+        }
+    }
+}pipeline {
+    agent any
+
+    parameters {
+        string(name: 'IMAGE_TAG', defaultValue: 'latest', description: 'Docker image tag to deploy')
+        string(name: 'DOCKER_IMAGE', defaultValue: 'rayenmekni123/competence-backend1', description: 'Docker image name')
+    }
+
+    environment {
+        NAMESPACE = 'competence'
+        K8S_DIR = 'k8s'
+    }
+
+    stages {
+        stage('Check Kubernetes Status') {
+            steps {
+                script {
+                    echo "Checking Kubernetes (Docker Desktop) status..."
+                    bat 'kubectl cluster-info'
+                    echo "Kubernetes is running"
+                }
+            }
+        }
+
+        stage('Prepare Namespace') {
+            steps {
+                script {
+                    echo "Creating namespace: ${NAMESPACE}"
+                    bat """
+                        kubectl create namespace ${NAMESPACE} || echo "Namespace ${NAMESPACE} already exists"
+                    """
+                    bat "kubectl config set-context --current --namespace=${NAMESPACE}"
+                }
+            }
+        }
+
+        stage('Deploy MySQL') {
+            steps {
+                script {
+                    echo "Deploying MySQL to Kubernetes..."
+                    bat "kubectl apply -f ${K8S_DIR}/mysql-deployment.yaml -n ${NAMESPACE}"
+                    bat """
+                        kubectl wait --for=condition=ready pod ^
+                            -l app=mysql ^
+                            -n ${NAMESPACE} ^
+                            --timeout=120s
+                    """
+                    echo "MySQL deployed successfully"
+                }
+            }
+        }
+
+        stage('Deploy Backend') {
+            steps {
+                script {
+                    echo "Deploying Backend application..."
+                    echo "Using Docker image: ${params.DOCKER_IMAGE}:${params.IMAGE_TAG}"
+                    bat """
+                        kubectl set image deployment/competence-backend ^
+                            competence-backend=${params.DOCKER_IMAGE}:${params.IMAGE_TAG} ^
+                            -n ${NAMESPACE} ^
+                            || kubectl apply -f ${K8S_DIR}/backend-deployment.yaml -n ${NAMESPACE}
+                    """
+                    bat """
+                        kubectl wait --for=condition=ready pod ^
+                            -l app=competence-backend ^
+                            -n ${NAMESPACE} ^
+                            --timeout=180s
+                    """
+                    echo "Backend deployed successfully"
+                }
+            }
+        }
+
+        stage('Deploy SonarQube') {
+            steps {
+                script {
+                    echo "Deploying SonarQube to Kubernetes..."
+                    bat "kubectl apply -f ${K8S_DIR}/sonarqube-deployment.yaml -n ${NAMESPACE}"
+                    bat """
+                        kubectl wait --for=condition=ready pod ^
+                            -l app=sonarqube ^
+                            -n ${NAMESPACE} ^
+                            --timeout=300s
+                    """
+                    echo "SonarQube URL: http://localhost:30900"
+                }
+            }
+        }
+
+        stage('Deploy Monitoring') {
+            steps {
+                script {
+                    echo "Deploying Prometheus..."
+                    bat "kubectl apply -f ${K8S_DIR}/prometheus-deployment.yaml -n ${NAMESPACE}"
+                    echo "Deploying Grafana..."
+                    bat "kubectl apply -f ${K8S_DIR}/grafana-deployment.yaml -n ${NAMESPACE}"
+                    bat """
+                        kubectl wait --for=condition=ready pod ^
+                            -l app=prometheus ^
+                            -n ${NAMESPACE} ^
+                            --timeout=120s
+                    """
+                    bat """
+                        kubectl wait --for=condition=ready pod ^
+                            -l app=grafana ^
+                            -n ${NAMESPACE} ^
+                            --timeout=120s
+                    """
+                    echo "Prometheus URL: http://localhost:30909"
+                    echo "Grafana URL: http://localhost:30300"
+                }
+            }
+        }
+
+        stage('Verify Deployments') {
+            steps {
+                script {
+                    echo "Verifying all deployments..."
+                    bat "kubectl get all -n ${NAMESPACE}"
+                    bat "kubectl get pods -n ${NAMESPACE}"
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "CD Pipeline completed successfully!"
+            echo "Backend API: http://localhost:30089"
+            echo "SonarQube: http://localhost:30900"
+            echo "Prometheus: http://localhost:30909"
+            echo "Grafana: http://localhost:30300"
+        }
+        failure {
+            echo "CD Pipeline failed. Check logs for details."
         }
     }
 }
